@@ -76,14 +76,13 @@ async function initializeGoogleAuth() {
   }
 }
 
-const transporter = nodemailer.createTransporter({
+const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
 });
-
 async function sendConfirmationEmail(email, name, date, time, appointmentMode) {
   const mailOptions = {
     from: `"GenepowerX Clinic" <${process.env.EMAIL_USER}>`,
