@@ -102,10 +102,12 @@ async function sendWhatsAppConfirmation(waClient,phone, message) {
 // Generate appointment slots (10 AM to 12 PM and 3 PM to 5 PM IST)
 function getBusinessHoursSlots(date) {
   const slots = [];
+  const baseDate = new Date(new Date(date).toLocaleString('en-US', { timeZone: TIMEZONE }));
+
   // Morning: 10:00 to 12:00 (30 min slots)
   for (let hour = 10; hour < 12; hour++) {
     for (let min = 0; min < 60; min += 30) {
-      const startTime = new Date(date);
+      const startTime = new Date(baseDate);
       startTime.setHours(hour, min, 0, 0);
 
       const endTime = new Date(startTime);
@@ -115,15 +117,16 @@ function getBusinessHoursSlots(date) {
         start: startTime.toISOString(),
         end: endTime.toISOString(),
         time: `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`,
-        label: `${hour}:${min.toString().padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'} - ` +
-          `${endTime.getHours()}:${endTime.getMinutes().toString().padStart(2, '0')} ${endTime.getHours() < 12 ? 'AM' : 'PM'}`
+        label: `${startTime.toLocaleTimeString('en-IN', { timeZone: TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: true })} - ` +
+               `${endTime.toLocaleTimeString('en-IN', { timeZone: TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: true })}`
       });
     }
   }
+
   // Evening: 15:00 to 17:00 (3 PM to 5 PM, 30 min slots)
   for (let hour = 15; hour < 17; hour++) {
     for (let min = 0; min < 60; min += 30) {
-      const startTime = new Date(date);
+      const startTime = new Date(baseDate);
       startTime.setHours(hour, min, 0, 0);
 
       const endTime = new Date(startTime);
@@ -133,36 +136,40 @@ function getBusinessHoursSlots(date) {
         start: startTime.toISOString(),
         end: endTime.toISOString(),
         time: `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`,
-        label: `${hour > 12 ? hour - 12 : hour}:${min.toString().padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'} - ` +
-          `${endTime.getHours() > 12 ? endTime.getHours() - 12 : endTime.getHours()}:${endTime.getMinutes().toString().padStart(2, '0')} ${endTime.getHours() < 12 ? 'AM' : 'PM'}`
+        label: `${startTime.toLocaleTimeString('en-IN', { timeZone: TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: true })} - ` +
+               `${endTime.toLocaleTimeString('en-IN', { timeZone: TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: true })}`
       });
     }
   }
+
   return slots;
 }
+
 
 // 📅 Get available slots on selected date (Indian calendar logic)
 app.get('/api/available-slots/:date', async (req, res) => {
   try {
     const { date } = req.params;
-    const requestedDate = new Date(`${date}T00:00:00+05:30`);
-    // requestedDate.setDate(requestedDate.getDate() + 1); 
+
+    // ✅ Adjust and parse date in IST
+    const requestedDate = new Date(new Date(`${date}T00:00:00`).toLocaleString('en-US', { timeZone: TIMEZONE }));
+    requestedDate.setDate(requestedDate.getDate() + 1); // 👈 Treat 29 as 28 logic
 
     const selectedDate = requestedDate;
-    console.log('📌 Adjusted selected date:', selectedDate.toISOString());
+    console.log('📌 Adjusted selected date:', selectedDate.toLocaleDateString('en-IN', { timeZone: TIMEZONE }));
 
     // Reject weekends
     const day = selectedDate.getDay();
     if (day === 0 || day === 6) return res.json({ slots: [] });
 
-    // Check if date is in past (Indian timezone)
+    // Check if date is in past (IST)
     const nowIST = new Date().toLocaleString('en-US', { timeZone: TIMEZONE });
     const todayIST = new Date(nowIST);
     todayIST.setHours(0, 0, 0, 0);
 
     if (selectedDate < todayIST) return res.json({ slots: [] });
 
-    // Generate slots for working hours
+    // Generate slots for working hours in IST
     const businessSlots = getBusinessHoursSlots(selectedDate);
 
     if (!calendar) return res.json({ slots: businessSlots });
@@ -197,7 +204,7 @@ app.get('/api/available-slots/:date', async (req, res) => {
       return isAvailable;
     });
 
-    console.log('🟢 Available slots:', availableSlots.map(s => s.time).join(', '));
+    console.log('🟢 Available slots (IST):', availableSlots.map(s => s.label).join(', '));
     res.json({ slots: availableSlots });
   } catch (error) {
     console.error('⚠️ Error in /available-slots:', error);
@@ -262,20 +269,27 @@ app.post('/api/book-appointment', async (req, res) => {
       eventId = response.data.id;
       console.log('📆 Event created:', eventId);
     }
-    // Format time for display
-    const displayHour = parseInt(hour);
-    const displayMinute = parseInt(minute) || 0;
-    const timeDisplay = `${displayHour > 12 ? displayHour - 12 : displayHour}:${displayMinute.toString().padStart(2, '0')} ${displayHour < 12 ? 'AM' : 'PM'}`;
-    const displayDate = appointmentDate.toLocaleDateString('en-IN');
+
+    // ✅ Updated to show time in Indian format
+    const timeDisplay = startTime.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: TIMEZONE
+    });
+
+    const displayDate = startTime.toLocaleDateString('en-IN', {
+      timeZone: TIMEZONE
+    });
+
     const message = `✅ Appointment Confirmed!\n👤 ${name}\n📅 ${displayDate}\n🕘 ${timeDisplay}\n📞 ${phone}\nMode: ${mode}`;
 
     await sendConfirmationEmail(email, name, displayDate, timeDisplay, mode);
     // await sendWhatsAppConfirmation(phone, message);
 
-    
     // Simulated WhatsApp/SMS confirmation
     const smsMessage = `✅ Appointment confirmed!
-📅 Date: ${appointmentDate.toLocaleDateString('en-IN')}
+📅 Date: ${displayDate}
 🕘 Time: ${timeDisplay}
 👩‍⚕️ Doctor: Dr. Hima
 📍 Location: Please arrive 15 minutes early at the clinic.`;
@@ -304,6 +318,7 @@ app.post('/api/book-appointment', async (req, res) => {
     res.status(500).json({ error: 'Could not complete appointment booking' });
   }
 });
+
 
 // ✅ Health check endpoint
 app.get('/api/health', (req, res) => {
