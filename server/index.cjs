@@ -321,14 +321,24 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+const path = require("path");
+
+// ✅ Serve React build
+app.use(express.static(path.join(__dirname, "../dist")));
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "../dist/index.html"));
+});
+
 // 🚀 Start server with calendar initialized
 async function startServer() {
   await initializeGoogleAuth();
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🌐 Server live at: http://0.0.0.0:${PORT}`);
-    console.log(`🔍 Health check: http://0.0.0.0:${PORT}/api/health`);
+  app.listen(process.env.PORT || 3001, "0.0.0.0", () => {
+    console.log(`✅ Server running on port ${process.env.PORT || 3001}`);
+  // app.listen(PORT, "0.0.0.0", () => {
+  //   console.log(`🌐 Server live at: http://0.0.0.0:${PORT}`);
+  //   console.log(`🔍 Health check: http://0.0.0.0:${PORT}/api/health`);
   });
-
 }
 
-startServer().catch(console.error);
+startServer();
