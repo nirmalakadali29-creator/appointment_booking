@@ -48,7 +48,7 @@ const transporter = nodemailer.createTransport({
 async function sendConfirmationEmail(email, name, date, time, appointmentMode) {
   const mailOptions = {
     from: `"GenepowerX Clinic" <${process.env.EMAIL_USER}>`,
-    to: `${email}, nirmalakadali29@gmail.com`,
+    to: `${email}`,
     subject: 'Your Appointment Confirmation with GenepowerX',
     html: `
       <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
@@ -94,7 +94,7 @@ async function sendConfirmationEmail(email, name, date, time, appointmentMode) {
   await transporter.sendMail(mailOptions);
 }
 
-async function sendWhatsAppConfirmation(waClient, phone, message) {
+async function sendWhatsAppConfirmation(waClient,phone, message) {
   const chatId = phone.replace(/\D/g, '') + '@c.us';
   await waClient.sendMessage(chatId, message);
 }
@@ -105,8 +105,7 @@ function getBusinessHoursSlots(date) {
   // Morning: 10:00 to 12:00 (30 min slots)
   for (let hour = 10; hour < 12; hour++) {
     for (let min = 0; min < 60; min += 30) {
-      const startTime = new Date(new Date(date).toLocaleString('en-US', { timeZone: TIMEZONE }));
-
+      const startTime = new Date(date);
       startTime.setHours(hour, min, 0, 0);
 
       const endTime = new Date(startTime);
@@ -146,9 +145,8 @@ function getBusinessHoursSlots(date) {
 app.get('/api/available-slots/:date', async (req, res) => {
   try {
     const { date } = req.params;
-    const requestedDate = new Date(new Date(`${date}T00:00:00`).toLocaleString('en-US', { timeZone: TIMEZONE }));
-
-    requestedDate.setDate(requestedDate.getDate() + 1); // 👈 Treat 29 as 28
+    const requestedDate = new Date(`${date}T00:00:00+05:30`);
+    requestedDate.setDate(requestedDate.getDate() + 1); 
 
     const selectedDate = requestedDate;
     console.log('📌 Adjusted selected date:', selectedDate.toISOString());
@@ -267,19 +265,14 @@ app.post('/api/book-appointment', async (req, res) => {
     // Format time for display
     const displayHour = parseInt(hour);
     const displayMinute = parseInt(minute) || 0;
-    const timeDisplay = startTime.toLocaleTimeString('en-IN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: TIMEZONE
-    });
-    const displayDate = startTime.toLocaleDateString('en-IN', { timeZone: TIMEZONE });
+    const timeDisplay = `${displayHour > 12 ? displayHour - 12 : displayHour}:${displayMinute.toString().padStart(2, '0')} ${displayHour < 12 ? 'AM' : 'PM'}`;
+    const displayDate = appointmentDate.toLocaleDateString('en-IN');
     const message = `✅ Appointment Confirmed!\n👤 ${name}\n📅 ${displayDate}\n🕘 ${timeDisplay}\n📞 ${phone}\nMode: ${mode}`;
 
     await sendConfirmationEmail(email, name, displayDate, timeDisplay, mode);
     // await sendWhatsAppConfirmation(phone, message);
 
-
+    
     // Simulated WhatsApp/SMS confirmation
     const smsMessage = `✅ Appointment confirmed!
 📅 Date: ${appointmentDate.toLocaleDateString('en-IN')}
@@ -321,6 +314,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// 🚀 Start server with calendar initialized
 const path = require("path");
 
 // ✅ Serve React build
@@ -330,15 +324,13 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "../dist/index.html"));
 });
 
-// 🚀 Start server with calendar initialized
+// ✅ Start server on correct port
 async function startServer() {
   await initializeGoogleAuth();
   app.listen(process.env.PORT || 3001, "0.0.0.0", () => {
     console.log(`✅ Server running on port ${process.env.PORT || 3001}`);
-  // app.listen(PORT, "0.0.0.0", () => {
-  //   console.log(`🌐 Server live at: http://0.0.0.0:${PORT}`);
-  //   console.log(`🔍 Health check: http://0.0.0.0:${PORT}/api/health`);
   });
 }
 
 startServer();
+
