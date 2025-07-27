@@ -109,12 +109,14 @@ async function sendConfirmationEmail(email, name, date, time, appointmentMode) {
           </tr>
         </table>
 
-        <p>Please make sure to:</p>
-        <ul style="margin-left: 20px;">
-          <li>Arrive at least <strong>15 minutes early</strong> for your appointment.</li>
-          <li>Bring any <strong>relevant medical documents or reports</strong>.</li>
-          <li>Ensure your phone/email is reachable for any updates or reminders.</li>
-        </ul>
+        <p>We have scheduled this appointment especially for you, ${name}. Kindly review the points below:</p>
+
+<p style="margin-top: 20px;"><strong>Before your visit, kindly note:</strong></p>
+<ul style="margin-left: 20px; padding-left: 0; list-style-type: disc;">
+  <li style="margin-bottom: 8px;">Be present at the clinic <strong>15 minutes before</strong> your scheduled time.</li>
+  <li style="margin-bottom: 8px;">Carry <strong>relevant medical reports or prescriptions</strong>.</li>
+  <li style="margin-bottom: 8px;">Ensure your <strong>contact number or email is active</strong> for updates.</li>
+</ul>
 
         <p>If you need to reschedule or cancel, kindly contact us at least <strong>24 hours in advance</strong>.</p>
 
