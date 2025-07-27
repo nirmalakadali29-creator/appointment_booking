@@ -13,13 +13,24 @@ export default function TimeSlots({ selectedDate, selectedTime, onTimeSelect }: 
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Helper function to format date for API (YYYY-MM-DD)
+  const formatDateForAPI = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   React.useEffect(() => {
     const fetchAvailableSlots = async () => {
       setLoading(true);
       setError(null);
       try {
-        const dateString = selectedDate.toISOString().split('T')[0];
+        const dateString = formatDateForAPI(selectedDate);
+        console.log('Fetching slots for date:', dateString, 'Original date:', selectedDate);
+        
         const slots = await api.getAvailableSlots(dateString);
+        console.log('Received slots:', slots);
         setTimeSlots(slots);
       } catch (err) {
         setError('Failed to load available time slots');
@@ -29,15 +40,18 @@ export default function TimeSlots({ selectedDate, selectedTime, onTimeSelect }: 
       }
     };
 
-    fetchAvailableSlots();
+    if (selectedDate) {
+      fetchAvailableSlots();
+    }
   }, [selectedDate]);
 
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString('en-IN', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'Asia/Kolkata'
     });
   };
 
@@ -50,6 +64,8 @@ export default function TimeSlots({ selectedDate, selectedTime, onTimeSelect }: 
       
       <p className="text-gray-600 mb-6">
         Select a time slot for <span className="font-medium text-gray-800">{formatDate(selectedDate)}</span>
+        <br />
+        <span className="text-sm text-blue-600">All times are in Indian Standard Time (IST)</span>
       </p>
 
       {loading && (
@@ -62,6 +78,7 @@ export default function TimeSlots({ selectedDate, selectedTime, onTimeSelect }: 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
           <p className="text-red-800 text-sm">{error}</p>
+          <p className="text-red-600 text-xs mt-1">Please try refreshing or select a different date.</p>
         </div>
       )}
 
@@ -103,6 +120,16 @@ export default function TimeSlots({ selectedDate, selectedTime, onTimeSelect }: 
           </button>
         ))}
       </div>
+
+      {timeSlots.length > 0 && (
+        <div className="mt-4 text-xs text-gray-500 text-center">
+          <p>• Each appointment slot is 30 minutes</p>
+          <p>• Morning slots: 10:00 AM - 12:00 PM</p>
+          <p>• Evening slots: 3:00 PM - 5:00 PM</p>
+        </div>
+      )}
     </div>
   );
 }
+
+export default function TimeSlots({ selectedDate, selectedTime, onTimeSelect
