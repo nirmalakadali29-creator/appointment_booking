@@ -146,7 +146,7 @@ app.get('/api/available-slots/:date', async (req, res) => {
   try {
     const { date } = req.params;
     const requestedDate = new Date(`${date}T00:00:00+05:30`);
-    requestedDate.setDate(requestedDate.getDate() + 1); 
+    // requestedDate.setDate(requestedDate.getDate() + 1); 
 
     const selectedDate = requestedDate;
     console.log('📌 Adjusted selected date:', selectedDate.toISOString());
