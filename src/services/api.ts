@@ -16,7 +16,7 @@ export interface BookingData {
   notes: string;
   date: string;
   time: string;
-  mode: AppointmentMode; // Added mode
+  mode: AppointmentMode;
 }
 
 export interface BookingResponse {
@@ -33,24 +33,37 @@ export interface BookingResponse {
     time: string;
     startTime: string;
     endTime: string;
-    mode: AppointmentMode; // Added mode
+    mode: AppointmentMode;
   };
 }
 
+// Helper function to format date for API (YYYY-MM-DD format)
+function formatDateForAPI(date: Date): string {
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export const api = {
-  async getAvailableSlots(date: string): Promise<TimeSlot[]> {
+  async getAvailableSlots(date: string | Date): Promise<TimeSlot[]> {
     try {
-      console.log(`Fetching available slots for date api: ${date}`);
-      const response = await fetch(`${API_BASE_URL}/available-slots/${date}`);
+      // If date is a Date object, format it properly
+      const dateString = typeof date === 'string' ? date : formatDateForAPI(date);
+      
+      console.log(`Fetching available slots for date: ${dateString}`);
+      const response = await fetch(`${API_BASE_URL}/available-slots/${dateString}`);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch available slots');
+        throw new Error(`Failed to fetch available slots: ${response.status}`);
       }
+      
       const data = await response.json();
+      console.log('Available slots response:', data);
       return data.slots || [];
     } catch (error) {
       console.error('Error fetching available slots:', error);
-      // Return default slots as fallback
-      // Return 10:00-12:00 and 15:00-17:00 slots, 30 min each
+      // Return default slots as fallback (IST times)
       return [
         { time: '10:00', label: '10:00 AM - 10:30 AM', start: '', end: '' },
         { time: '10:30', label: '10:30 AM - 11:00 AM', start: '', end: '' },
@@ -66,6 +79,8 @@ export const api = {
 
   async bookAppointment(bookingData: BookingData): Promise<BookingResponse> {
     try {
+      console.log('Booking appointment with data:', bookingData);
+      
       const response = await fetch(`${API_BASE_URL}/book-appointment`, {
         method: 'POST',
         headers: {
@@ -73,30 +88,38 @@ export const api = {
         },
         body: JSON.stringify(bookingData),
       });
-      console.log('📌 Booking response:', response);
+      
+      console.log('Booking response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error('Failed to book appointment');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Booking failed with status ${response.status}`);
       }
 
-      return await response.json();
+      const result = await response.json();
+      console.log('Booking successful:', result);
+      return result;
     } catch (error) {
       console.error('Error booking appointment:', error);
       throw error;
     }
   },
 
-  async checkHealth(): Promise<{ status: string; googleCalendar: boolean }> {
+  async checkHealth(): Promise<{ status: string; googleCalendar: boolean; istTime?: string }> {
     try {
       const response = await fetch(`${API_BASE_URL}/health`);
       if (!response.ok) {
         throw new Error('Health check failed');
       }
-      return await response.json();
+      const result = await response.json();
+      console.log('Health check result:', result);
+      return result;
     } catch (error) {
       console.error('Health check failed:', error);
       return { status: 'ERROR', googleCalendar: false };
     }
   },
+
   async appointmentModes(): Promise<{ modes: AppointmentMode[] }> {
     try {
       const response = await fetch(`${API_BASE_URL}/appointment-modes`);
