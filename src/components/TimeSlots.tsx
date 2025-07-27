@@ -132,4 +132,3 @@ export default function TimeSlots({ selectedDate, selectedTime, onTimeSelect }: 
   );
 }
 
-export default function TimeSlots({ selectedDate, selectedTime, onTimeSelect
