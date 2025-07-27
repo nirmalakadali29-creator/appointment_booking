@@ -24,6 +24,44 @@ const TIMEZONE = 'Asia/Kolkata'; // Indian Standard Time
 let auth;
 let calendar;
 
+// Helper function to get current IST date/time
+function getCurrentISTDate() {
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  return new Date(utc + istOffset);
+}
+
+// Helper function to create IST date from date string
+function createISTDate(dateString) {
+  // Parse the date string as IST
+  const [year, month, day] = dateString.split('-').map(Number);
+  // Create date in IST (month is 0-indexed)
+  const istDate = new Date();
+  istDate.setFullYear(year, month - 1, day);
+  istDate.setHours(0, 0, 0, 0);
+  return istDate;
+}
+
+// Helper function to create IST datetime
+function createISTDateTime(dateString, timeString) {
+  const [year, month, day] = dateString.split('-').map(Number);
+  const [hour, minute] = timeString.split(':').map(Number);
+  
+  // Create date in IST
+  const istDate = new Date();
+  istDate.setFullYear(year, month - 1, day);
+  istDate.setHours(hour, minute || 0, 0, 0);
+  
+  return istDate;
+}
+
+// Helper function to convert IST date to UTC for Google Calendar
+function convertISTToUTC(istDate) {
+  const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+  return new Date(istDate.getTime() - istOffset);
+}
+
 async function initializeGoogleAuth() {
   try {
     const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS || '{}');
@@ -37,7 +75,8 @@ async function initializeGoogleAuth() {
     console.error('❌ Google Calendar initialization failed:', error);
   }
 }
-const transporter = nodemailer.createTransport({
+
+const transporter = nodemailer.createTransporter({
   service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
@@ -94,50 +133,64 @@ async function sendConfirmationEmail(email, name, date, time, appointmentMode) {
   await transporter.sendMail(mailOptions);
 }
 
-async function sendWhatsAppConfirmation(waClient,phone, message) {
+async function sendWhatsAppConfirmation(waClient, phone, message) {
   const chatId = phone.replace(/\D/g, '') + '@c.us';
   await waClient.sendMessage(chatId, message);
 }
 
 // Generate appointment slots (10 AM to 12 PM and 3 PM to 5 PM IST)
-function getBusinessHoursSlots(date) {
+function getBusinessHoursSlots(istDate) {
   const slots = [];
+  
   // Morning: 10:00 to 12:00 (30 min slots)
   for (let hour = 10; hour < 12; hour++) {
     for (let min = 0; min < 60; min += 30) {
-      const startTime = new Date(date);
+      const startTime = new Date(istDate);
       startTime.setHours(hour, min, 0, 0);
 
       const endTime = new Date(startTime);
       endTime.setMinutes(endTime.getMinutes() + 30);
 
+      // Convert to UTC for Google Calendar API
+      const startTimeUTC = convertISTToUTC(startTime);
+      const endTimeUTC = convertISTToUTC(endTime);
+
       slots.push({
-        start: startTime.toISOString(),
-        end: endTime.toISOString(),
+        start: startTimeUTC.toISOString(),
+        end: endTimeUTC.toISOString(),
         time: `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`,
-        label: `${hour}:${min.toString().padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'} - ` +
+        label: `${hour}:${min.toString().padStart(2, '0')} AM - ` +
           `${endTime.getHours()}:${endTime.getMinutes().toString().padStart(2, '0')} ${endTime.getHours() < 12 ? 'AM' : 'PM'}`
       });
     }
   }
+  
   // Evening: 15:00 to 17:00 (3 PM to 5 PM, 30 min slots)
   for (let hour = 15; hour < 17; hour++) {
     for (let min = 0; min < 60; min += 30) {
-      const startTime = new Date(date);
+      const startTime = new Date(istDate);
       startTime.setHours(hour, min, 0, 0);
 
       const endTime = new Date(startTime);
       endTime.setMinutes(endTime.getMinutes() + 30);
 
+      // Convert to UTC for Google Calendar API
+      const startTimeUTC = convertISTToUTC(startTime);
+      const endTimeUTC = convertISTToUTC(endTime);
+
+      const displayHour = hour > 12 ? hour - 12 : hour;
+      const endDisplayHour = endTime.getHours() > 12 ? endTime.getHours() - 12 : endTime.getHours();
+
       slots.push({
-        start: startTime.toISOString(),
-        end: endTime.toISOString(),
+        start: startTimeUTC.toISOString(),
+        end: endTimeUTC.toISOString(),
         time: `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`,
-        label: `${hour > 12 ? hour - 12 : hour}:${min.toString().padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'} - ` +
-          `${endTime.getHours() > 12 ? endTime.getHours() - 12 : endTime.getHours()}:${endTime.getMinutes().toString().padStart(2, '0')} ${endTime.getHours() < 12 ? 'AM' : 'PM'}`
+        label: `${displayHour}:${min.toString().padStart(2, '0')} PM - ` +
+          `${endDisplayHour}:${endTime.getMinutes().toString().padStart(2, '0')} PM`
       });
     }
   }
+  
   return slots;
 }
 
@@ -145,43 +198,56 @@ function getBusinessHoursSlots(date) {
 app.get('/api/available-slots/:date', async (req, res) => {
   try {
     const { date } = req.params;
-    const requestedDate = new Date(`${date}T00:00:00+05:30`);
-    requestedDate.setDate(requestedDate.getDate() + 1); 
-
-    const selectedDate = requestedDate;
-    console.log('📌 Adjusted selected date:', selectedDate.toISOString());
+    console.log('📌 Requested date string:', date);
+    
+    // Create IST date from the date string
+    const selectedDate = createISTDate(date);
+    console.log('📌 Selected date in IST:', selectedDate.toISOString());
 
     // Reject weekends
     const day = selectedDate.getDay();
-    if (day === 0 || day === 6) return res.json({ slots: [] });
+    if (day === 0 || day === 6) {
+      console.log('❌ Weekend date rejected');
+      return res.json({ slots: [] });
+    }
 
-    // Check if date is in past (Indian timezone)
-    const nowIST = new Date().toLocaleString('en-IN', { timeZone: TIMEZONE });
-    const todayIST = new Date(nowIST);
+    // Check if date is in past (IST)
+    const todayIST = getCurrentISTDate();
     todayIST.setHours(0, 0, 0, 0);
-
-    if (selectedDate < todayIST) return res.json({ slots: [] });
+    
+    if (selectedDate < todayIST) {
+      console.log('❌ Past date rejected');
+      return res.json({ slots: [] });
+    }
 
     // Generate slots for working hours
     const businessSlots = getBusinessHoursSlots(selectedDate);
 
-    if (!calendar) return res.json({ slots: businessSlots });
+    if (!calendar) {
+      console.log('⚠️ No calendar integration, returning all business slots');
+      return res.json({ slots: businessSlots });
+    }
 
-    const startOfDay = new Date(selectedDate);
-    const endOfDay = new Date(selectedDate);
-    endOfDay.setDate(endOfDay.getDate() + 1);
-    endOfDay.setMilliseconds(-1);
+    // For Google Calendar API, we need to query in UTC
+    const startOfDayUTC = convertISTToUTC(selectedDate);
+    const endOfDayIST = new Date(selectedDate);
+    endOfDayIST.setDate(endOfDayIST.getDate() + 1);
+    endOfDayIST.setMilliseconds(-1);
+    const endOfDayUTC = convertISTToUTC(endOfDayIST);
+
+    console.log('📌 Querying Google Calendar from', startOfDayUTC.toISOString(), 'to', endOfDayUTC.toISOString());
 
     const response = await calendar.events.list({
       calendarId: DOCTOR_EMAIL,
-      timeMin: startOfDay.toISOString(),
-      timeMax: endOfDay.toISOString(),
+      timeMin: startOfDayUTC.toISOString(),
+      timeMax: endOfDayUTC.toISOString(),
       singleEvents: true,
       orderBy: 'startTime',
       timeZone: TIMEZONE,
     });
 
     const existingEvents = response.data.items || [];
+    console.log('📌 Found existing events:', existingEvents.length);
 
     const availableSlots = businessSlots.filter(slot => {
       const slotStart = new Date(slot.start);
@@ -214,24 +280,28 @@ app.post('/api/book-appointment', async (req, res) => {
       return res.status(400).json({ error: 'Please fill the required fields' });
     }
 
-    const appointmentDate = new Date(date);
-    const [hour, minute] = time.split(':');
+    console.log('📌 Booking request:', { date, time, name, mode });
 
-    const startTime = new Date(appointmentDate);
-    startTime.setHours(parseInt(hour), parseInt(minute) || 0, 0, 0);
+    // Create IST datetime
+    const startTimeIST = createISTDateTime(date, time);
+    const endTimeIST = new Date(startTimeIST);
+    endTimeIST.setMinutes(endTimeIST.getMinutes() + 30);
 
-    const endTime = new Date(startTime);
-    endTime.setMinutes(endTime.getMinutes() + 30); // 30-minute appointments
+    // Convert to UTC for Google Calendar
+    const startTimeUTC = convertISTToUTC(startTimeIST);
+    const endTimeUTC = convertISTToUTC(endTimeIST);
 
-    console.log(`📅 Booking: ${name} from ${startTime.toISOString()} to ${endTime.toISOString()}`);
+    console.log(`📅 Booking: ${name} from ${startTimeIST.toISOString()} (IST) to ${endTimeIST.toISOString()} (IST)`);
+    console.log(`📅 UTC times: ${startTimeUTC.toISOString()} to ${endTimeUTC.toISOString()}`);
 
     let eventId = null;
 
     if (calendar) {
+      // Check for conflicts using UTC times
       const checkResponse = await calendar.events.list({
         calendarId: DOCTOR_EMAIL,
-        timeMin: startTime.toISOString(),
-        timeMax: endTime.toISOString(),
+        timeMin: startTimeUTC.toISOString(),
+        timeMax: endTimeUTC.toISOString(),
         singleEvents: true,
         timeZone: TIMEZONE,
       });
@@ -242,9 +312,15 @@ app.post('/api/book-appointment', async (req, res) => {
 
       const event = {
         summary: `Appointment with ${name}`,
-        description: `Patient: ${name}\nPhone: ${phone}\n Email: ${email} \n Appontment mode: ${mode}\nNotes: ${notes || 'No additional notes'}`,
-        start: { dateTime: startTime.toISOString(), timeZone: TIMEZONE },
-        end: { dateTime: endTime.toISOString(), timeZone: TIMEZONE },
+        description: `Patient: ${name}\nPhone: ${phone}\nEmail: ${email}\nAppointment mode: ${mode}\nNotes: ${notes || 'No additional notes'}`,
+        start: { 
+          dateTime: startTimeUTC.toISOString(), 
+          timeZone: TIMEZONE 
+        },
+        end: { 
+          dateTime: endTimeUTC.toISOString(), 
+          timeZone: TIMEZONE 
+        },
         reminders: {
           useDefault: false,
           overrides: [
@@ -262,20 +338,20 @@ app.post('/api/book-appointment', async (req, res) => {
       eventId = response.data.id;
       console.log('📆 Event created:', eventId);
     }
-    // Format time for display
-    const displayHour = parseInt(hour);
-    const displayMinute = parseInt(minute) || 0;
+
+    // Format time for display (IST)
+    const displayHour = startTimeIST.getHours();
+    const displayMinute = startTimeIST.getMinutes();
     const timeDisplay = `${displayHour > 12 ? displayHour - 12 : displayHour}:${displayMinute.toString().padStart(2, '0')} ${displayHour < 12 ? 'AM' : 'PM'}`;
-    const displayDate = appointmentDate.toLocaleDateString('en-IN');
+    const displayDate = startTimeIST.toLocaleDateString('en-IN');
+    
     const message = `✅ Appointment Confirmed!\n👤 ${name}\n📅 ${displayDate}\n🕘 ${timeDisplay}\n📞 ${phone}\nMode: ${mode}`;
 
     await sendConfirmationEmail(email, name, displayDate, timeDisplay, mode);
-    // await sendWhatsAppConfirmation(phone, message);
-
     
     // Simulated WhatsApp/SMS confirmation
     const smsMessage = `✅ Appointment confirmed!
-📅 Date: ${appointmentDate.toLocaleDateString('en-IN')}
+📅 Date: ${displayDate}
 🕘 Time: ${timeDisplay}
 👩‍⚕️ Doctor: Dr. Hima
 📍 Location: Please arrive 15 minutes early at the clinic.`;
@@ -292,10 +368,10 @@ app.post('/api/book-appointment', async (req, res) => {
         phone,
         email,
         notes,
-        date: appointmentDate.toISOString(),
+        date: startTimeIST.toISOString(),
         time,
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
+        startTime: startTimeIST.toISOString(),
+        endTime: endTimeIST.toISOString(),
         mode,
       }
     });
@@ -307,9 +383,11 @@ app.post('/api/book-appointment', async (req, res) => {
 
 // ✅ Health check endpoint
 app.get('/api/health', (req, res) => {
+  const currentIST = getCurrentISTDate();
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
+    istTime: currentIST.toISOString(),
     googleCalendar: !!calendar,
   });
 });
@@ -329,8 +407,8 @@ async function startServer() {
   await initializeGoogleAuth();
   app.listen(process.env.PORT || 3001, "0.0.0.0", () => {
     console.log(`✅ Server running on port ${process.env.PORT || 3001}`);
+    console.log(`🕐 Current IST time: ${getCurrentISTDate().toISOString()}`);
   });
 }
 
 startServer();
-
