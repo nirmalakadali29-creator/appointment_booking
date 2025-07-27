@@ -9,7 +9,17 @@ interface CalendarProps {
 export default function Calendar({ selectedDate, onDateSelect }: CalendarProps) {
   const [currentMonth, setCurrentMonth] = React.useState(new Date());
 
-  const today = new Date();
+  // Get current IST date
+  const getCurrentISTDate = () => {
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    return new Date(utc + istOffset);
+  };
+
+  const todayIST = getCurrentISTDate();
+  todayIST.setHours(0, 0, 0, 0); // Set to start of day for comparison
+
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
 
@@ -34,7 +44,12 @@ export default function Calendar({ selectedDate, onDateSelect }: CalendarProps) 
   };
 
   const isDateDisabled = (date: Date) => {
-    return date < today || date.getDay() === 0 || date.getDay() === 6; // Disable weekends and past dates
+    // Compare dates properly for IST
+    const dateToCheck = new Date(date);
+    dateToCheck.setHours(0, 0, 0, 0);
+    
+    // Disable if it's in the past, or if it's a weekend
+    return dateToCheck < todayIST || date.getDay() === 0 || date.getDay() === 6;
   };
 
   const isDateSelected = (date: Date) => {
@@ -114,7 +129,8 @@ export default function Calendar({ selectedDate, onDateSelect }: CalendarProps) 
       </div>
 
       <div className="mt-4 text-xs text-gray-500 text-center">
-        * Weekends are not available for appointments
+        * Weekends are not available for appointments<br/>
+        * All times are in Indian Standard Time (IST)
       </div>
     </div>
   );
