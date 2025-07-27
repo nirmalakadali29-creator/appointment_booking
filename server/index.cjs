@@ -146,7 +146,7 @@ app.get('/api/available-slots/:date', async (req, res) => {
   try {
     const { date } = req.params;
     const requestedDate = new Date(`${date}T00:00:00+05:30`);
-    // requestedDate.setDate(requestedDate.getDate() + 1); 
+    requestedDate.setDate(requestedDate.getDate() + 1); 
 
     const selectedDate = requestedDate;
     console.log('📌 Adjusted selected date:', selectedDate.toISOString());
@@ -156,7 +156,7 @@ app.get('/api/available-slots/:date', async (req, res) => {
     if (day === 0 || day === 6) return res.json({ slots: [] });
 
     // Check if date is in past (Indian timezone)
-    const nowIST = new Date().toLocaleString('en-US', { timeZone: TIMEZONE });
+    const nowIST = new Date().toLocaleString('en-IN', { timeZone: TIMEZONE });
     const todayIST = new Date(nowIST);
     todayIST.setHours(0, 0, 0, 0);
 
