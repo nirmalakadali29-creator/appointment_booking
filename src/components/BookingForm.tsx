@@ -19,6 +19,14 @@ export default function BookingForm({ selectedDate, selectedTime, onSubmit }: Bo
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Helper function to format date for API (YYYY-MM-DD format)
+  const formatDateForAPI = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     submitBooking();
@@ -34,10 +42,12 @@ export default function BookingForm({ selectedDate, selectedTime, onSubmit }: Bo
         phone: formData.phone,
         email: formData.email,
         notes: formData.notes,
-        date: selectedDate.toISOString(),
+        date: formatDateForAPI(selectedDate), // Use proper date formatting instead of ISO string
         time: selectedTime,
         mode: formData.appointmentMode.toLowerCase(), // Map appointmentMode to mode
       };
+
+      console.log('Booking data being sent:', bookingData);
 
       const response = await api.bookAppointment(bookingData);
 
@@ -50,7 +60,8 @@ export default function BookingForm({ selectedDate, selectedTime, onSubmit }: Bo
         setError('Failed to book appointment. Please try again.');
       }
     } catch (err) {
-      setError('Failed to book appointment. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to book appointment. Please try again.';
+      setError(errorMessage);
       console.error('Booking error:', err);
     } finally {
       setIsSubmitting(false);
@@ -65,36 +76,37 @@ export default function BookingForm({ selectedDate, selectedTime, onSubmit }: Bo
   };
 
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString('en-IN', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'Asia/Kolkata'
     });
   };
 
- const formatTime = (time: string): string => {
-  const [hourStr, minuteStr] = time.split(':');
-  let hour = parseInt(hourStr, 10);
-  let minute = parseInt(minuteStr, 10);
+  const formatTime = (time: string): string => {
+    const [hourStr, minuteStr] = time.split(':');
+    let hour = parseInt(hourStr, 10);
+    let minute = parseInt(minuteStr || '0', 10);
 
-  const format = (h: number, m: number): string => {
-    const period = h < 12 || h === 24 ? 'AM' : 'PM';
-    const hour12 = h % 12 === 0 ? 12 : h % 12;
-    const minuteStr = m.toString().padStart(2, '0');
-    return `${hour12}:${minuteStr} ${period}`;
+    const format = (h: number, m: number): string => {
+      const period = h < 12 ? 'AM' : 'PM';
+      const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+      const minuteStr = m.toString().padStart(2, '0');
+      return `${hour12}:${minuteStr} ${period}`;
+    };
+
+    // Calculate end time (30 minutes later)
+    let endHour = hour;
+    let endMinute = minute + 30;
+    if (endMinute >= 60) {
+      endMinute -= 60;
+      endHour += 1;
+    }
+
+    return `${format(hour, minute)} - ${format(endHour, endMinute)}`;
   };
-
-  // Calculate end time (30 minutes later)
-  let endHour = hour;
-  let endMinute = minute + 30;
-  if (endMinute >= 60) {
-    endMinute -= 60;
-    endHour += 1;
-  }
-
-  return `${format(hour, minute)} - ${format(endHour, endMinute)}`;
-};
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
@@ -110,7 +122,7 @@ export default function BookingForm({ selectedDate, selectedTime, onSubmit }: Bo
 
         <div className="flex items-center gap-2 mt-3 mb-2">
           <Clock className="w-4 h-4 text-blue-600" />
-          <span className="text-sm font-medium text-blue-700">Selected Time</span>
+          <span className="text-sm font-medium text-blue-700">Selected Time (IST)</span>
         </div>
         <p className="text-blue-800 font-semibold">{formatTime(selectedTime)}</p>
       </div>
@@ -150,32 +162,14 @@ export default function BookingForm({ selectedDate, selectedTime, onSubmit }: Bo
             onChange={handleInputChange}
             required
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-            placeholder="Enter your phone number"
+            placeholder="Enter your phone number (e.g., +91 9876543210)"
           />
         </div>
 
-        {/* Appointment Mode Dropdown */}
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-            Appointment Mode *
-          </label>
-          <select
-            name="appointmentMode"
-            value={formData.appointmentMode}
-            onChange={handleInputChange}
-            required
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-          >
-            <option value="offline">offline</option>
-            <option value="online">Online</option>
-          </select>
-        </div>
-
-        {/* Email Input */}
         <div>
           <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
             <Mail className="w-4 h-4" />
-            Email *
+            Email Address *
           </label>
           <input
             type="email"
@@ -186,6 +180,24 @@ export default function BookingForm({ selectedDate, selectedTime, onSubmit }: Bo
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             placeholder="Enter your email address"
           />
+        </div>
+
+        {/* Appointment Mode Dropdown */}
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+            <Calendar className="w-4 h-4" />
+            Appointment Mode *
+          </label>
+          <select
+            name="appointmentMode"
+            value={formData.appointmentMode}
+            onChange={handleInputChange}
+            required
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+          >
+            <option value="offline">In-Person Visit</option>
+            <option value="online">Online Consultation</option>
+          </select>
         </div>
 
         <div>
@@ -218,6 +230,11 @@ export default function BookingForm({ selectedDate, selectedTime, onSubmit }: Bo
           )}
         </button>
       </form>
+
+      <div className="mt-4 text-xs text-gray-500 text-center">
+        <p>* All appointments are scheduled in Indian Standard Time (IST)</p>
+        <p>* You will receive a confirmation email and SMS</p>
+      </div>
     </div>
   );
 }
